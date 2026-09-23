@@ -187,27 +187,47 @@ def test_stale_decision_is_consumed_before_any_mutation(runner):
 
 
 @pytest.mark.parametrize(
-    ("expected", "current"),
+    "case",
     [
         (
             {"id": "e1", "kind": "fill", "label": "Search", "role": "textbox", "value": "", "node": 10},
             {"id": "e1", "kind": "click", "label": "Open Search", "role": "textbox", "value": "", "node": 10},
+            {"kind", "label"},
         ),
         (
-            {"id": "e1", "kind": "select", "label": "Team → Alpha", "role": "combobox", "value": "a", "node": 10},
-            {"id": "e1", "kind": "select", "label": "Team → Beta", "role": "combobox", "value": "b", "node": 10},
+            {"id": "e1", "kind": "select", "label": "Team", "role": "combobox", "value": "a", "node": 10},
+            {"id": "e1", "kind": "select", "label": "Team", "role": "combobox", "value": "b", "node": 10},
+            {"value"},
         ),
         (
             {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
             {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 99},
+            {"node"},
+        ),
+        # The no-node pairs model modified/corrupted snapshots to isolate each
+        # checked-command parser guard; they are not natural snapshot output.
+        (
+            {"id": "scroll_down", "kind": "scroll", "label": "Scroll"},
+            {"id": "scroll_up", "kind": "scroll", "label": "Scroll"},
+            {"id"},
         ),
         (
-            {"id": "scroll_down", "kind": "scroll", "label": "Scroll down", "delta": 560},
-            {"id": "wait", "kind": "wait", "label": "Wait for the page to update"},
+            {"id": "control", "kind": "scroll", "label": "Control"},
+            {"id": "control", "kind": "wait", "label": "Control"},
+            {"kind"},
+        ),
+        (
+            {"id": "wait", "kind": "wait", "label": "Wait for the page"},
+            {"id": "wait", "kind": "wait", "label": "Pause for the page"},
+            {"label"},
         ),
     ],
 )
-def test_checked_act_rejects_reused_id_with_different_action(runner, expected, current):
+def test_checked_act_rejects_identity_mismatch(runner, case):
+    expected, current, changed_fields = case
+    differences = {key for key in expected.keys() | current.keys() if expected.get(key) != current.get(key)}
+    assert differences == changed_fields
+
     current_page = page()
     current_page["actions"] = [current]
     current_page["fingerprint"] = fingerprint(current_page)
