@@ -124,8 +124,19 @@ def test_missing_typesafe_envelope_key_is_rejected_safely(monkeypatch, missing_k
 
     monkeypatch.setattr(model, "post_json", post)
 
-    with pytest.raises(ValueError, match="Invalid TypeSafe response; no action executed"):
+    with pytest.raises(ValueError) as error:
         model.choose(page(), "Find a book", [])
+    assert str(error.value) == "Invalid TypeSafe response; no action executed."
+
+
+@pytest.mark.parametrize("response", [{"answers": None, "model": "test"}, {"answers": [], "model": "test"}, []])
+def test_malformed_typesafe_answers_are_rejected_safely(monkeypatch, response):
+    monkeypatch.setenv("TYPESAFE_API_KEY", "test")
+    monkeypatch.setattr(model, "post_json", Mock(return_value=response))
+
+    with pytest.raises(ValueError) as error:
+        model.choose(page(), "Find a book", [])
+    assert str(error.value) == "Invalid TypeSafe response; no action executed."
 
 
 def test_target_head_receives_control_state_and_full_next_step_rules(monkeypatch):
