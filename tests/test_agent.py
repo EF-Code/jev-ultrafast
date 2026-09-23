@@ -36,7 +36,6 @@ def choice(ids, selected):
 def decision(action="e1"):
     return {
         "choice": action,
-        "node": {"e1": 10, "e2": 10, "e3": 20}.get(action),
         "operation": "TYPE_TEXT",
         "target": "1",
         "confidence": 1.0,
@@ -94,7 +93,6 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     d = model.choose(page(), "Find a book", [])
     assert len(calls) == 1
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
-    assert d["node"] == 10
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
 
 
@@ -188,16 +186,81 @@ def test_stale_decision_is_consumed_before_any_mutation(runner):
     assert runner.state["decision"] is None
 
 
-def test_reused_action_id_cannot_execute_a_different_node(runner):
-    runner.state["decision"] = decision("e3")
-    runner.state["decision"]["node"] = 20
-    runner.state["page"]["actions"][2]["node"] = 99
+@pytest.mark.parametrize(
+    ("expected", "current"),
+    [
+        (
+            {"id": "e1", "kind": "fill", "label": "Search", "role": "textbox", "value": "", "node": 10},
+            {"id": "e1", "kind": "click", "label": "Open Search", "role": "textbox", "value": "", "node": 10},
+        ),
+        (
+            {"id": "e1", "kind": "select", "label": "Team → Alpha", "role": "combobox", "value": "a", "node": 10},
+            {"id": "e1", "kind": "select", "label": "Team → Beta", "role": "combobox", "value": "b", "node": 10},
+        ),
+        (
+            {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
+            {"id": "e1", "kind": "click", "label": "Cancel", "role": "button", "value": "", "node": 99},
+        ),
+        (
+            {"id": "scroll_down", "kind": "scroll", "label": "Scroll down", "delta": 560},
+            {"id": "wait", "kind": "wait", "label": "Wait for the page to update"},
+        ),
+    ],
+)
+def test_checked_act_rejects_reused_id_with_different_action(runner, expected, current):
+    current_page = page()
+    current_page["actions"] = [current]
+    current_page["fingerprint"] = fingerprint(current_page)
+    runner.state["page"] = current_page
+    runner.state["decision"] = decision(current["id"])
 
     with pytest.raises(StalePage):
-        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+        runner.command(
+            "act",
+            {"fingerprint": current_page["fingerprint"], "expected_action": deepcopy(expected)},
+        )
 
     runner.state["browser"].act.assert_not_called()
     assert runner.state["decision"] is None
+
+
+def test_checked_act_rejects_missing_current_id(runner):
+    original_action = deepcopy(runner.state["page"]["actions"][2])
+    current_page = page()
+    current_page["actions"] = current_page["actions"][:2]
+    current_page["fingerprint"] = fingerprint(current_page)
+    runner.state["page"] = current_page
+    runner.state["decision"] = decision("e3")
+
+    with pytest.raises(StalePage):
+        runner.command(
+            "act",
+            {"fingerprint": current_page["fingerprint"], "expected_action": original_action},
+        )
+
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["decision"] is None
+
+
+def test_checked_act_accepts_same_action_after_index_movement(runner):
+    original_action = deepcopy(runner.state["page"]["actions"][2])
+    current_page = page()
+    current_page["actions"] = [
+        {**deepcopy(original_action), "id": "e1"},
+        *deepcopy(current_page["actions"][:2]),
+        deepcopy(current_page["actions"][3]),
+    ]
+    current_page["fingerprint"] = fingerprint(current_page)
+    runner.state["page"] = current_page
+    runner.state["browser"].observe.return_value = current_page
+    runner.state["decision"] = decision("e1")
+
+    runner.command(
+        "act",
+        {"fingerprint": current_page["fingerprint"], "expected_action": original_action},
+    )
+
+    runner.state["browser"].act.assert_called_once_with(current_page["actions"][0], current_page, text=None)
 
 
 def test_generated_text_reused_only_for_identical_retry_context(runner, monkeypatch):
