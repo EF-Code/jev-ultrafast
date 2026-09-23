@@ -199,7 +199,7 @@ def test_stale_decision_is_consumed_before_any_mutation(runner):
         ),
         (
             {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 20},
-            {"id": "e1", "kind": "click", "label": "Cancel", "role": "button", "value": "", "node": 99},
+            {"id": "e1", "kind": "click", "label": "Go", "role": "button", "value": "", "node": 99},
         ),
         (
             {"id": "scroll_down", "kind": "scroll", "label": "Scroll down", "delta": 560},
@@ -240,6 +240,37 @@ def test_checked_act_rejects_missing_current_id(runner):
 
     runner.state["browser"].act.assert_not_called()
     assert runner.state["decision"] is None
+
+
+def test_unchecked_act_rejects_missing_current_id(runner):
+    current_page = page()
+    current_page["actions"] = current_page["actions"][:2]
+    current_page["fingerprint"] = fingerprint(current_page)
+    runner.state["page"] = current_page
+    runner.state["decision"] = decision("e3")
+
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": current_page["fingerprint"]})
+
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["decision"] is None
+
+
+def test_tick_reobserves_after_missing_selected_id(runner, monkeypatch):
+    current_page = page()
+    current_page["actions"] = current_page["actions"][:2]
+    current_page["fingerprint"] = fingerprint(current_page)
+    runner.state["page"] = current_page
+    runner.state["decision"] = None
+    runner.state["browser"].observe.return_value = current_page
+    monkeypatch.setattr(loop, "choose", Mock(return_value=decision("e3")))
+
+    state = runner.command("tick")
+
+    assert state["status"] == "ready"
+    assert state["decision"] is None
+    runner.state["browser"].act.assert_not_called()
+    runner.state["browser"].observe.assert_called_once_with(screenshot=False)
 
 
 def test_checked_act_accepts_same_action_after_index_movement(runner):

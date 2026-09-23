@@ -99,16 +99,16 @@ class Agent:
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
                 return self.snapshot()
             expected_action = body.get("expected_action")
-            if expected_action is None:
-                action = next(a for a in page["actions"] if a["id"] == selected)
-            else:
-                action = next((a for a in page["actions"] if a["id"] == selected), None)
-                fields = ("id", "kind", "label") if action and action.get("node") is None else (
+            action = next((a for a in page["actions"] if a["id"] == selected), None)
+            if not action:
+                raise StalePage("Selected target changed since this decision. Choose again.")
+            if expected_action is not None:
+                fields = ("id", "kind", "label") if action.get("node") is None else (
                     "node", "kind", "role", "label"
                 )
-                if action and action.get("kind") == "select":
+                if action.get("kind") == "select":
                     fields += ("value",)
-                if not action or not isinstance(expected_action, dict) or any(
+                if not isinstance(expected_action, dict) or any(
                     key not in action or key not in expected_action or action[key] != expected_action[key]
                     for key in fields
                 ):
