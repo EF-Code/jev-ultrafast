@@ -36,6 +36,7 @@ def choice(ids, selected):
 def decision(action="e1"):
     return {
         "choice": action,
+        "node": {"e1": 10, "e2": 10, "e3": 20}.get(action),
         "operation": "TYPE_TEXT",
         "target": "1",
         "confidence": 1.0,
@@ -93,6 +94,7 @@ def test_all_heads_are_one_request_and_only_matching_head_executes(monkeypatch):
     d = model.choose(page(), "Find a book", [])
     assert len(calls) == 1
     assert d["operation"] == "TYPE_TEXT" and d["target"] == "1" and d["choice"] == "e1"
+    assert d["node"] == 10
     assert set(calls[0]["questions"]) == {"operation", "click_target", "type_text_target"}
 
 
@@ -182,6 +184,18 @@ def test_stale_decision_is_consumed_before_any_mutation(runner):
     runner.state["browser"].fresh.return_value = False
     with pytest.raises(StalePage):
         runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+    runner.state["browser"].act.assert_not_called()
+    assert runner.state["decision"] is None
+
+
+def test_reused_action_id_cannot_execute_a_different_node(runner):
+    runner.state["decision"] = decision("e3")
+    runner.state["decision"]["node"] = 20
+    runner.state["page"]["actions"][2]["node"] = 99
+
+    with pytest.raises(StalePage):
+        runner.command("act", {"fingerprint": runner.state["page"]["fingerprint"]})
+
     runner.state["browser"].act.assert_not_called()
     assert runner.state["decision"] is None
 

@@ -98,7 +98,9 @@ class Agent:
                 state["plan_index"] = int(selected == "DONE")
                 state["elapsed_ms"] = round((time.perf_counter() - state["started_at"]) * 1000)
                 return self.snapshot()
-            action = next(a for a in page["actions"] if a["id"] == selected)
+            action = next((a for a in page["actions"] if a["id"] == selected), None)
+            if not action or action.get("node") != decision.get("node"):
+                raise StalePage("Selected target changed since this decision. Choose again.")
             if len(state["history"]) >= MAX_STEPS:
                 state["status"] = "blocked"
                 raise ValueError(f"Stopped at the {MAX_STEPS}-action demo budget")

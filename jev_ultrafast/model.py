@@ -121,18 +121,22 @@ def choose(state, goal, history):
     operation = operation_answer["choice"]
     target = None
     target_answer = None
+    node = None
     probabilities = {}
     if operation in targets:
         # Unused target heads cannot cause an action. Validate the head selected by the operation.
         target_answer = validate_choice(result["answers"].get(operation.lower() + "_target", {}), targets[operation])
         target = target_answer["choice"]
         choice = targets[operation][target]["id"]
+        node = targets[operation][target].get("node")
         probabilities = {a["id"]: target_answer["probabilities"][index] for index, a in targets[operation].items()}
     else:
         choice = controls[operation]["id"] if operation in controls else operation
+        node = controls[operation].get("node") if operation in controls else None
         probabilities[choice] = operation_answer["probabilities"][operation]
     return {
         "choice": choice,
+        "node": node,
         "operation": operation,
         "target": target,
         "confidence": operation_answer["confidence"],
